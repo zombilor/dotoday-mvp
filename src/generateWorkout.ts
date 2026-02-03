@@ -3,7 +3,7 @@ type Location = "home" | "hotel" | "gym";
 type Equipment = "none" | "dumbbells" | "barbell" | "full_gym";
 type Experience = "beginner" | "intermediate" | "advanced";
 type Energy = "low" | "medium" | "high";
-type WorkoutStyle = "balanced" | "strength" | "conditioning" | "powerlifting";
+type WorkoutStyle = "balanced" | "strength" | "conditioning" | "powerlifting" | "abs";
 
 export type WorkoutInputs = {
   time_minutes: TimeMinutes;
@@ -103,6 +103,125 @@ function resolveStyle(inputs: Required<WorkoutInputs>, equip: Equipment): Workou
     if (equip !== "barbell" && equip !== "full_gym") return "strength";
   }
   return requested;
+}
+
+function hasBackLimitations(limitations: string): boolean {
+  const text = limitations.toLowerCase();
+  return text.includes("back");
+}
+
+type AbsCategory =
+  | "anti_extension"
+  | "flexion"
+  | "rotation"
+  | "anti_rotation"
+  | "lower_core"
+  | "upper_core"
+  | "stability"
+  | "dynamic_core";
+type AbsMove = { name: string; category: AbsCategory; equip: "none" | "dumbbells" };
+const ABS_MOVES: AbsMove[] = [
+  { name: "Plank", category: "anti_extension", equip: "none" },
+  { name: "Dead bug", category: "anti_extension", equip: "none" },
+  { name: "Hollow hold", category: "flexion", equip: "none" },
+  { name: "Bicycle crunch", category: "flexion", equip: "none" },
+  { name: "Seated twist", category: "rotation", equip: "none" },
+  { name: "Side plank", category: "anti_rotation", equip: "none" },
+  { name: "Suitcase march", category: "anti_rotation", equip: "dumbbells" },
+  { name: "Reverse crunch", category: "lower_core", equip: "none" },
+  { name: "Leg raise", category: "lower_core", equip: "none" },
+  { name: "Crunch", category: "upper_core", equip: "none" },
+  { name: "Bear hold", category: "stability", equip: "none" },
+  { name: "Bird dog", category: "stability", equip: "none" },
+  { name: "Mountain climber", category: "dynamic_core", equip: "none" },
+  { name: "High plank shoulder tap", category: "dynamic_core", equip: "none" },
+];
+
+function absWorkoutMinutes(time: TimeMinutes): number {
+  if (time === 10) return 7;
+  if (time === 20) return 11;
+  return 16;
+}
+
+function pickAbsMovesByCategory(
+  inputs: Required<WorkoutInputs>,
+  equip: Equipment
+): AbsMove[] {
+  const backLimited = hasBackLimitations(inputs.limitations);
+  const allowDumbbell = equip === "dumbbells" || equip === "full_gym";
+  const pool = ABS_MOVES.filter((m) => (m.equip === "dumbbells" ? allowDumbbell : true))
+    .filter((m) => !backLimited || !["flexion"].includes(m.category));
+  const seed = Number.isFinite(inputs.variation_seed) ? (inputs.variation_seed as number) : 1;
+  const shuffled = Number.isFinite(inputs.variation_seed) ? shuffleWithSeed(pool, seed + 7) : pool;
+
+  const byCategory = new Map<AbsCategory, AbsMove[]>();
+  for (const move of shuffled) {
+    const list = byCategory.get(move.category) ?? [];
+    list.push(move);
+    byCategory.set(move.category, list);
+  }
+
+  const categories: AbsCategory[] = [
+    "anti_extension",
+    "flexion",
+    "rotation",
+    "anti_rotation",
+    "lower_core",
+    "upper_core",
+    "stability",
+    "dynamic_core",
+  ];
+
+  const picks: AbsMove[] = [];
+  categories.forEach((cat, idx) => {
+    const list = byCategory.get(cat) ?? [];
+    if (list.length === 0) return;
+    const pick = Number.isFinite(inputs.variation_seed)
+      ? list[(seed + idx) % list.length]
+      : list[0];
+    picks.push(pick);
+  });
+
+  return Number.isFinite(inputs.variation_seed)
+    ? shuffleWithSeed(picks, seed + 11)
+    : picks;
+}
+
+function absRoundCount(time: TimeMinutes): number {
+  if (time === 10) return 2;
+  if (time === 20) return 3;
+  return 4;
+}
+
+function absRepScheme(inputs: Required<WorkoutInputs>) {
+  if (inputs.experience === "beginner") return { reps: 8, seconds: 30, rest: 20 };
+  if (inputs.experience === "advanced") return { reps: 12, seconds: 40, rest: 15 };
+  return { reps: 10, seconds: 35, rest: 20 };
+}
+
+function formatAbsLine(
+  move: AbsMove,
+  reps: number,
+  seconds: number,
+  rest: number
+): string {
+  if (move.name.toLowerCase().includes("plank") || move.name.toLowerCase().includes("hold")) {
+    return `- ${move.name}: ${seconds}s, rest ${rest}s`;
+  }
+  return `- ${move.name}: ${reps} reps, rest ${rest}s`;
+}
+
+function absWarmup(inputs: Required<WorkoutInputs>, equip: Equipment) {
+  const backLimited = hasBackLimitations(inputs.limitations);
+  const allowDumbbell = equip === "dumbbells" || equip === "full_gym";
+  const base = [
+    { name: "Dead bug", seconds: 20 },
+    { name: "Plank", seconds: 20 },
+    { name: "Glute bridge", reps: 8 },
+  ];
+  const withCarry = allowDumbbell ? { name: "Suitcase march", seconds: 20 } : null;
+  const moves = backLimited ? base : (withCarry ? [base[0], withCarry, base[2]] : base);
+  return { minutes: moves.length === 3 ? 3 : 2, lines: moves.map(formatWarmupMove) };
 }
 
 function buildPool(inputs: Required<WorkoutInputs>, equip: Equipment): Exercise[] {
@@ -354,6 +473,25 @@ export function generateWorkout(raw: WorkoutInputs): string {
   const limitations = sanitizeLimitations(inputs.limitations);
   const style = resolveStyle(inputs, equip);
   const pool = buildPool({ ...inputs, time_minutes: time, equipment: equip }, equip);
+
+  if (style === "abs") {
+    const warmup = absWarmup(inputs, equip);
+    const workoutMinutes = absWorkoutMinutes(time);
+    const rounds = absRoundCount(time);
+    const repScheme = absRepScheme(inputs);
+    const moves = pickAbsMovesByCategory(inputs, equip);
+    const absLines = moves.map((m) => formatAbsLine(m, repScheme.reps, repScheme.seconds, repScheme.rest));
+
+    return [
+      "Today's Focus: Abs + Core",
+      `Warm-up (${warmup.minutes} min):`,
+      ...warmup.lines,
+      `Abs Workout (${workoutMinutes} min):`,
+      `- ${rounds} rounds`,
+      ...absLines,
+      "Finish: breathe 60s",
+    ].join("\n");
+  }
 
   let lines: string[] = [];
   let warmup = { label: "Warm-up", minutes: 3, lines: [] as string[] };

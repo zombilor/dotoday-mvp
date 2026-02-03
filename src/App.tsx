@@ -8,7 +8,7 @@ const locationOptions: FormState["location"][] = ["home", "hotel", "gym"];
 const equipmentOptions: FormState["equipment"][] = ["none", "dumbbells", "barbell", "full_gym"];
 const experienceOptions: FormState["experience"][] = ["beginner", "intermediate", "advanced"];
 const energyOptions: FormState["energy"][] = ["low", "medium", "high"];
-const styleOptions: NonNullable<FormState["workout_style"]>[] = ["balanced", "strength", "conditioning", "powerlifting"];
+const styleOptions: NonNullable<FormState["workout_style"]>[] = ["balanced", "strength", "conditioning", "powerlifting", "abs"];
 
 const defaultState: FormState = {
   time_minutes: 20,
@@ -77,8 +77,8 @@ export default function App() {
     <div className="min-h-screen bg-white text-slate-900">
       <main className="mx-auto max-w-2xl px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Do Today</h1>
-          <p className="mt-2 text-sm text-slate-600">One focused workout. Clear and doable.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Coach Lorenze</h1>
+          <p className="mt-2 text-sm text-slate-600">Keep working harder.</p>
         </div>
 
         <div className="space-y-6">
